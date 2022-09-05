@@ -11,5 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "vite": "^3.1.0"
+  },
+  "devDependencies": {
+    "type-fest": "^2.19.0"
   }
 }

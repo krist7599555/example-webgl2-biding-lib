@@ -1,13 +1,35 @@
-export class KrGl {
+import { RecordOfVariableTypeFromShaderString } from "./type";
+
+// prettier-ignore
+const TYPECONVERT = {
+  "float": { glsl_type: "float", base_type: "FLOAT", element_size: 4, element_count: 1  },
+  "vec2":  { glsl_type: "vec2",  base_type: "FLOAT", element_size: 4, element_count: 2  },
+  "vec3":  { glsl_type: "vec3",  base_type: "FLOAT", element_size: 4, element_count: 3  },
+  "int":   { glsl_type: "int",   base_type: "INT",   element_size: 4, element_count: 1  },
+  "bool":  { glsl_type: "bool",  base_type: "BOOL",  element_size: 1, element_count: 1  },
+  "mat3":  { glsl_type: "mat3",  base_type: "FLOAT", element_size: 4, element_count: 9  },
+  "mat4":  { glsl_type: "mat4",  base_type: "FLOAT", element_size: 4, element_count: 16 },
+} as const;
+type KrGlslVarType = keyof typeof TYPECONVERT;
+
+export class KrGl<WebGlProgramVariable extends { [key: string]: KrGlslVarType }> {
   /**
    * global enum to reference GLenum
    * @see https://registry.khronos.org/OpenGL/api/GL/glext.h **/
   static _gl: WebGL2RenderingContext;
   static _program: WebGLProgram;
-
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
+
+  static create<VS extends string, FS extends string>(opt: {
+    canvas?: HTMLCanvasElement;
+    vertext_shader: VS;
+    fragment_shader: FS;
+  }): KrGl<RecordOfVariableTypeFromShaderString<VS | FS>> {
+    return new KrGl(opt);
+  }
+
   constructor(opt: {
     canvas?: HTMLCanvasElement;
     vertext_shader: string;
@@ -29,73 +51,40 @@ export class KrGl {
     this.gl.useProgram(this.program);
     return this;
   }
-  attribute(name: string) {}
-}
-
-type KrGlTypeString =
-  | `FLOAT${"" | `_${"VEC" | "MAT"}${"2" | "3" | "4"}`}`
-  | `BOOL${"" | `_VEC${"2" | "3" | "4"}`}`
-  | `INT${"" | `_VEC${"2" | "3" | "4"}`}`;
-
-// prettier-ignore
-type KrGlTypeElementCount<T extends KrGlTypeString> = 
-  T extends `${string}_VEC2` ? 2 :
-  T extends `${string}_VEC3` ? 3 :
-  T extends `${string}_VEC4` ? 4 :
-  T extends `${string}_MAT2` ? 4 :
-  T extends `${string}_MAT3` ? 9 :
-  T extends `${string}_MAT4` ? 16 :
-  1;
-class KrGlType<T extends KrGlTypeString> {
-  type: T;
-  constructor(type: T) {
-    this.type = type;
-  }
-  get element_count(): KrGlTypeElementCount<T> {
-    const type = this.type.split("_")[1] ?? null;
-    // @ts-ignore
-    if (type == null) return 1;
-    const num = +type.slice(-1);
-    const square = type.includes("MAT");
-    // @ts-ignore
-    return square ? num * num : num;
-  }
-  get native_type(): T extends `${infer I}_${string}` ? I : T {
-    return this.type.split("_")[0] as any;
-  }
-  get native_type_size(): KrGlType<T>["native_type"] extends "FLOAT"
-    ? 4
-    : KrGlType<T>["native_type"] extends "INT"
-    ? 4
-    : KrGlType<T>["native_type"] extends "BOOL"
-    ? 1
-    : never {
-    return {
-      FLOAT: 4,
-      INT: 4,
-      BOOL: 1,
-    }[this.native_type] as any;
-  }
-  get glenum(): WebGL2RenderingContext[T] {
-    return KrGl._gl[this.type];
+  attribute_location<T extends keyof WebGlProgramVariable & string>(
+    name: T,
+    type: WebGlProgramVariable[T]
+  ) {
+    return new KrGlLocation(name, type, "attribute");
   }
 }
-const a = new KrGlType("FLOAT_MAT4");
+
+class KrGlType<T extends KrGlslVarType> {
+  constructor(public readonly type: T) {}
+  get element_count(): typeof TYPECONVERT[T]["element_count"] {
+    return TYPECONVERT[this.type].element_count;
+  }
+  get native_type(): typeof TYPECONVERT[T]["base_type"] {
+    return TYPECONVERT[this.type].base_type;
+  }
+  get native_type_size(): typeof TYPECONVERT[T]["element_size"] {
+    return TYPECONVERT[this.type].element_size;
+  }
+  get glenum(): WebGL2RenderingContext[typeof TYPECONVERT[T]["base_type"]] {
+    return KrGl._gl[TYPECONVERT[this.type].base_type];
+  }
+}
 
 type KrGlBufferString =
   | "ARRAY_BUFFER"
   | "UNIFORM_BUFFER"
   | "ELEMENT_ARRAY_BUFFER";
-export class KrGlBuffer<
-  BUFFTYPE extends KrGlBufferString,
-  ELETYPE extends "FLOAT" | "INT" | "BOOL"
-> {
+
+export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> {
   webgl_buffer: WebGLBuffer;
   buffer_type: BUFFTYPE;
-  element_type: KrGlType<ELETYPE>;
-  constructor(buffer_type: BUFFTYPE, element_type: ELETYPE) {
+  constructor(buffer_type: BUFFTYPE) {
     this.buffer_type = buffer_type;
-    this.element_type = new KrGlType(element_type);
     this.webgl_buffer = KrGl._gl.createBuffer()!;
   }
   bind(fn: () => void = () => {}) {
@@ -119,7 +108,7 @@ type KrGlLocationNativeLocationType<T extends KrGlLocationUniformOrAttribute> =
     : never;
 export class KrGlLocation<
   NAME extends string,
-  TYPE extends KrGlTypeString,
+  TYPE extends KrGlslVarType,
   UA extends KrGlLocationUniformOrAttribute
 > {
   name: NAME;
@@ -134,7 +123,7 @@ export class KrGlLocation<
       this.location = KrGl._gl.getUniformLocation(KrGl._program, name)! as any;
     } else {
       this.location = KrGl._gl.getAttribLocation(KrGl._program, name)! as any;
-      KrGl._gl.enableVertexAttribArray(this.location as any);
+      KrGl._gl.enableVertexAttribArray(this.location as any); // auto enable
     }
     if (
       (typeof this.location != "number" && !this.location) ||
