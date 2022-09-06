@@ -171,7 +171,7 @@ class KrGlLocationAttribute<
       ...param.data
     );
   }
-  set_attr_to_active_buffer(
+  set_attr_to_active_array_buffer(
     opt: {
       strip?: number;
       offset?: number;
@@ -220,6 +220,7 @@ class KrGlLocationUniform<
   }
 }
 
+/** snapshot of buffer state for multiple draw */
 class KrGlVAO implements KrGlBiding {
   vao: WebGLVertexArrayObject;
   static create() {

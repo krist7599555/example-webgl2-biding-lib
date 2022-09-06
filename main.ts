@@ -14,11 +14,12 @@ const kgl = KrGl.create({
     #pragma vscode_glsllint_stage: vert
     layout(location = 0) in vec2 aPosition;
     layout(location = 1) in vec3 aColor;
+    layout(location = 2) in vec3 aTranslate;
     uniform mat4 uMvp;
     out vec3 vColor;
     void main() {
       vColor = aColor;
-      gl_Position = uMvp * vec4(aPosition, 0.0, 1.0);
+      gl_Position = vec4(aTranslate, 0.0) + (uMvp * vec4(aPosition, 0.0, 1.0));
     }`,
   fragment_shader: /*glsl*/ `#version 300 es
     #pragma vscode_glsllint_stage: frag
@@ -54,7 +55,7 @@ const vao = kgl.create_vao_state().bind(() => {
       kgl
         .attribute_location("aPosition", "vec2")
         .enable_attr_array()
-        .set_attr_to_active_buffer()
+        .set_attr_to_active_array_buffer()
     );
 });
 
@@ -69,6 +70,11 @@ const webgl_index = KrGlBuffer.create("ELEMENT_ARRAY_BUFFER").data(
   ])
 );
 
+const transform_count = 3;
+const transform = new KrGlBuffer("ARRAY_BUFFER").data(
+  new Float32Array([0.5, 0.0, 0.0, 0.0, 0.2, 0.0, -0.3, -0.3, 0.0])
+);
+
 requestAnimationFrame(function f(t) {
   kgl.uniform_location("uMvp", "mat4").set_uniform_data({
     data: [false, Matrix4.IDENTITY.clone().rotateZ(t / 500)],
@@ -77,13 +83,37 @@ requestAnimationFrame(function f(t) {
   gl.clearColor(0.72, 0.83, 0.93, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  webgl_bind({ vao: vao, element_array_buffer: webgl_index }, () => {
-    const acolor = kgl.attribute_location("aColor", "vec3");
-    acolor.set_attr_data_fallback({ data: [1, 0, 0] });
-    gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0);
-    acolor.set_attr_data_fallback({ data: [1, 1, 0] });
-    gl.drawElements(gl.LINE_STRIP, 15, gl.UNSIGNED_BYTE, 0);
-  });
+  webgl_bind(
+    { vao: vao, array_buffer: transform, element_array_buffer: webgl_index },
+    () => {
+      const acolor = kgl.attribute_location("aColor", "vec3");
+
+      kgl
+        .attribute_location("aTranslate", "vec3")
+        // .disable_attr_array().set_attr_data_fallback({ data: [0.5, 0.0, 0.0]  })
+        .enable_attr_array()
+        .set_attr_to_active_array_buffer();
+
+      acolor.set_attr_data_fallback({ data: [1, 0, 0] });
+      gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0);
+
+      const reuse_count = 1;
+      gl.vertexAttribDivisor(
+        kgl.attribute_location("aTranslate", "vec3").location,
+        reuse_count
+      );
+      gl.drawElementsInstanced(
+        gl.TRIANGLES,
+        15,
+        gl.UNSIGNED_BYTE,
+        0,
+        transform_count
+      );
+
+      // acolor.set_attr_data_fallback({ data: [1, 1, 0] });
+      // gl.drawElements(gl.LINE_STRIP, 15, gl.UNSIGNED_BYTE, 0);
+    }
+  );
 
   requestAnimationFrame(f);
 });
