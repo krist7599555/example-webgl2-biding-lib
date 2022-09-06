@@ -1,4 +1,5 @@
-import { ValueOf } from "type-fest";
+import { values } from "lodash-es";
+import { TypedArray, ValueOf } from "type-fest";
 import { RecordOfVariableTypeFromShaderString } from "./type";
 
 function assert<T>(cond: T, message = "assert error"): asserts cond {
@@ -75,25 +76,15 @@ export class KrGl<
   ) {
     return new KrGlLocationUniform(name, type);
   }
+  create_vao_state() {
+    return new KrGlVAO();
+  }
 }
 
-class KrGlType<T extends KrGlslVarType> {
-  constructor(public readonly type: T) {}
-  get element_count(): typeof TYPECONVERT[T]["element_count"] {
-    return TYPECONVERT[this.type].element_count;
-  }
-  get native_type(): typeof TYPECONVERT[T]["base_type"] {
-    return TYPECONVERT[this.type].base_type;
-  }
-  get native_type_size(): typeof TYPECONVERT[T]["element_size"] {
-    return TYPECONVERT[this.type].element_size;
-  }
-  get size_in_byte(): typeof TYPECONVERT[T]["size_in_byte"] {
-    return TYPECONVERT[this.type].size_in_byte;
-  }
-  get glenum(): WebGL2RenderingContext[typeof TYPECONVERT[T]["base_type"]] {
-    return KrGl._gl[TYPECONVERT[this.type].base_type];
-  }
+interface KrGlBiding {
+  bind(fn: () => void): this;
+  _unsafe_bind_enable(): this;
+  _unsafe_bind_disable(): this;
 }
 
 type KrGlBufferString =
@@ -101,7 +92,7 @@ type KrGlBufferString =
   | "UNIFORM_BUFFER"
   | "ELEMENT_ARRAY_BUFFER";
 
-export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> {
+export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> implements KrGlBiding {
   webgl_buffer: WebGLBuffer;
   buffer_type: BUFFTYPE;
   static create<BUFFTYPE extends KrGlBufferString>(buffer_type: BUFFTYPE) {
@@ -111,25 +102,27 @@ export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> {
     this.buffer_type = buffer_type;
     this.webgl_buffer = KrGl._gl.createBuffer()!;
   }
-  bind(fn: () => void = () => {}) {
+  _unsafe_bind_enable(): this {
     KrGl._gl.bindBuffer(KrGl._gl[this.buffer_type], this.webgl_buffer);
-    fn();
     return this;
   }
-  data(inp: BufferSource) {
-    this.bind();
-    KrGl._gl.bufferData(KrGl._gl[this.buffer_type], inp, KrGl._gl.STATIC_DRAW);
+  _unsafe_bind_disable(): this {
+    KrGl._gl.bindBuffer(KrGl._gl[this.buffer_type], null);
+    return this;
+  }
+  bind(fn: () => void): this {
+    this._unsafe_bind_enable()
+    fn();
+    this._unsafe_bind_disable()
+    return this;
+  }
+  data(inp: TypedArray) {
+    this.bind(() => {
+      KrGl._gl.bufferData(KrGl._gl[this.buffer_type], inp, KrGl._gl.STATIC_DRAW);
+    });
     return this;
   }
 }
-
-type KrGlLocationUniformOrAttribute = "uniform" | "attribute";
-type KrGlLocationNativeLocationType<T extends KrGlLocationUniformOrAttribute> =
-  T extends "uniform"
-    ? Exclude<ReturnType<WebGL2RenderingContext["getUniformLocation"]>, null>
-    : T extends "attribute"
-    ? Exclude<ReturnType<WebGL2RenderingContext["getAttribLocation"]>, null>
-    : never;
 
 class KrGlLocationBase<NAME extends string, TYPE extends KrGlslVarType> {
   constructor(public readonly name: NAME, public readonly type: TYPE) {}
@@ -158,7 +151,7 @@ class KrGlLocationAttribute<
   }
   disable_attr_array() {
     this.flag.enable_vert_attr_arr = false;
-    KrGl._gl.disable(this.location);
+    KrGl._gl.disableVertexAttribArray(this.location);
     return this;
   }
   set_attr_data_fallback<
@@ -227,6 +220,32 @@ class KrGlLocationUniform<
   }
 }
 
+class KrGlVAO implements KrGlBiding {
+  vao: WebGLVertexArrayObject;
+  static create() {
+    return new KrGlVAO();
+  }
+  constructor() {
+    this.vao = KrGl._gl.createVertexArray()!
+    assert(this.vao);
+  }
+  _unsafe_bind_enable() {
+    KrGl._gl.bindVertexArray(this.vao);
+    return this;
+  }
+  _unsafe_bind_disable() {
+    KrGl._gl.bindVertexArray(null);
+    return this;
+  }
+  bind(fn: () => void) {
+    this._unsafe_bind_enable()
+    fn();
+    this._unsafe_bind_disable()
+    return this;
+  }
+
+}
+
 
 function createShader(
   gl: WebGL2RenderingContext,
@@ -259,4 +278,14 @@ function createProgram(
   }
   console.log(gl.getProgramInfoLog(program));
   gl.deleteProgram(program);
+}
+
+export function webgl_bind(opt: {
+  vao?: KrGlVAO,
+  array_buffer?: KrGlBuffer<"ARRAY_BUFFER">
+  element_array_buffer?: KrGlBuffer<"ELEMENT_ARRAY_BUFFER">
+}, fn: () => void) {
+  values(opt).forEach(o => o._unsafe_bind_enable())
+  fn()
+  values(opt).forEach(o => o._unsafe_bind_disable())
 }

@@ -1,5 +1,5 @@
 import { sum } from "lodash-es";
-import { KrGl, KrGlBuffer, TYPECONVERT } from "./lib";
+import { KrGl, KrGlBuffer, TYPECONVERT, webgl_bind } from "./lib";
 import { Matrix4 } from "@math.gl/core";
 
 // https://github.com/scriptfoundry/WebGL2-Videos-Materials/blob/main/03.Attributes1.js
@@ -32,8 +32,8 @@ const kgl = KrGl.create({
 
 const gl = kgl.gl;
 
-const { sin, cos, PI } = Math
-const TWOPI = 2 * PI
+const { sin, cos, PI } = Math;
+const TWOPI = 2 * PI;
 const amp = 0.7;
 // prettier-ignore
 const vertecies = new Float32Array([
@@ -47,53 +47,43 @@ const vertecies = new Float32Array([
   
 ])
 
-// prettier-ignore
-const indices = new Uint8Array( [
-  0,1,2,
-  0,2,3,
-  0,3,4,
-  0,4,5,
-  0,5,1,
-]);
+const vao = kgl.create_vao_state().bind(() => {
+  KrGlBuffer.create("ARRAY_BUFFER")
+    .data(vertecies)
+    .bind(() =>
+      kgl
+        .attribute_location("aPosition", "vec2")
+        .enable_attr_array()
+        .set_attr_to_active_buffer()
+    );
+});
 
-const apos = kgl.attribute_location("aPosition", "vec2");
-const acolor = kgl.attribute_location("aColor", "vec3");
-const umvp = kgl.uniform_location("uMvp", "mat4");
-
-// set default value
-// apos.disable_attr_array().set_attr_data_fallback({ data: [0, 0] });
-acolor.disable_attr_array().set_attr_data_fallback({ data: [1, 0, 0] });
-// set vertex array
-
-
-KrGlBuffer.create("ARRAY_BUFFER")
-  .data(vertecies)
-  .bind(() => {
-    apos
-      .enable_attr_array()
-      .set_attr_to_active_buffer();
-  });
-
-KrGlBuffer.create("ELEMENT_ARRAY_BUFFER")
-  .data(indices)
-  .bind(() => {
-    
-  });
+const webgl_index = KrGlBuffer.create("ELEMENT_ARRAY_BUFFER").data(
+  // prettier-ignore
+  new Uint8Array( [
+    0,1,2,
+    0,2,3,
+    0,3,4,
+    0,4,5,
+    0,5,1,
+  ])
+);
 
 requestAnimationFrame(function f(t) {
-  umvp.set_uniform_data({
-    data: [false, Matrix4.IDENTITY.clone().rotateZ(t / 500)
-  ],
+  kgl.uniform_location("uMvp", "mat4").set_uniform_data({
+    data: [false, Matrix4.IDENTITY.clone().rotateZ(t / 500)],
   });
 
   gl.clearColor(0.72, 0.83, 0.93, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  acolor.set_attr_data_fallback({ data: [1, 0, 0] });
-  gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0)
+  webgl_bind({ vao: vao, element_array_buffer: webgl_index }, () => {
+    const acolor = kgl.attribute_location("aColor", "vec3");
+    acolor.set_attr_data_fallback({ data: [1, 0, 0] });
+    gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0);
+    acolor.set_attr_data_fallback({ data: [1, 1, 0] });
+    gl.drawElements(gl.LINE_STRIP, 15, gl.UNSIGNED_BYTE, 0);
+  });
 
-  acolor.set_attr_data_fallback({ data: [1, 1, 0] });
-  gl.drawElements(gl.LINE_STRIP, 15, gl.UNSIGNED_BYTE, 0)
-  
   requestAnimationFrame(f);
 });
