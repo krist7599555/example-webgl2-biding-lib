@@ -95,12 +95,14 @@ type KrGlBufferString =
 export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> implements KrGlBiding {
   webgl_buffer: WebGLBuffer;
   buffer_type: BUFFTYPE;
+  _data: TypedArray;
   static create<BUFFTYPE extends KrGlBufferString>(buffer_type: BUFFTYPE) {
     return new KrGlBuffer(buffer_type);
   }
   constructor(buffer_type: BUFFTYPE) {
     this.buffer_type = buffer_type;
     this.webgl_buffer = KrGl._gl.createBuffer()!;
+    this._data = new Float32Array([])
   }
   _unsafe_bind_enable(): this {
     KrGl._gl.bindBuffer(KrGl._gl[this.buffer_type], this.webgl_buffer);
@@ -117,10 +119,14 @@ export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> implements KrGlBiding
     return this;
   }
   data(inp: TypedArray) {
+    this._data = inp
     this.bind(() => {
       KrGl._gl.bufferData(KrGl._gl[this.buffer_type], inp, KrGl._gl.STATIC_DRAW);
     });
     return this;
+  }
+  update() {
+    return this.data(this._data);
   }
 }
 

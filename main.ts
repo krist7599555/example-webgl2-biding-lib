@@ -72,7 +72,13 @@ const webgl_index = KrGlBuffer.create("ELEMENT_ARRAY_BUFFER").data(
 
 const transform_count = 3;
 const transform = new KrGlBuffer("ARRAY_BUFFER").data(
-  new Float32Array([0.5, 0.0, 0.0, 0.0, 0.2, 0.0, -0.3, -0.3, 0.0])
+  // prettier-ignore
+  new Float32Array([
+    // [translate vec3], [color vec3]
+    0.5, 0.0, 0.0, 0, 1, 0,
+    0.0, 0.2, 0.0, 0, 0, 1,
+    -0.3, -0.3, 0.0, 1, 1, 0,
+  ])
 );
 
 requestAnimationFrame(function f(t) {
@@ -83,23 +89,39 @@ requestAnimationFrame(function f(t) {
   gl.clearColor(0.72, 0.83, 0.93, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+  transform._data[0] = Math.sin(t / 1000)
+  transform._data[5] = Math.sin(t / 1000)
+  transform._data[7] = Math.sin(t / 1000)
+  transform.update()
+
   webgl_bind(
     { vao: vao, array_buffer: transform, element_array_buffer: webgl_index },
     () => {
-      const acolor = kgl.attribute_location("aColor", "vec3");
-
+      const FLOAT_SIZE = 4;
       kgl
         .attribute_location("aTranslate", "vec3")
-        // .disable_attr_array().set_attr_data_fallback({ data: [0.5, 0.0, 0.0]  })
         .enable_attr_array()
-        .set_attr_to_active_array_buffer();
+        .set_attr_to_active_array_buffer({
+          strip: FLOAT_SIZE * 6,
+          offset: 0 * 0,
+        });
 
-      acolor.set_attr_data_fallback({ data: [1, 0, 0] });
+      kgl
+        .attribute_location("aColor", "vec3")
+        .enable_attr_array()
+        .set_attr_to_active_array_buffer({
+          strip: FLOAT_SIZE * 6,
+          offset: FLOAT_SIZE * 3,
+        });
       gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0);
 
       const reuse_count = 1;
       gl.vertexAttribDivisor(
         kgl.attribute_location("aTranslate", "vec3").location,
+        reuse_count
+      );
+      gl.vertexAttribDivisor(
+        kgl.attribute_location("aColor", "vec3").location,
         reuse_count
       );
       gl.drawElementsInstanced(
