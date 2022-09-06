@@ -45,18 +45,16 @@ const vertecies = new Float32Array([
   sin(TWOPI * 3 / 5) * amp, cos(TWOPI * 3 / 5) * amp,
   sin(TWOPI * 4 / 5) * amp, cos(TWOPI * 4 / 5) * amp,
   sin(TWOPI * 5 / 5) * amp, cos(TWOPI * 5 / 5) * amp,
-  
 ])
 
-const vao = kgl.create_vao_state().bind(() => {
-  KrGlBuffer.create("ARRAY_BUFFER")
-    .data(vertecies)
-    .bind(() =>
-      kgl
-        .attribute_location("aPosition", "vec2")
-        .enable_attr_array()
-        .set_attr_to_active_array_buffer()
-    );
+const vertecies_buffer = KrGlBuffer.create("ARRAY_BUFFER").data(vertecies);
+const vao = kgl.create_vao_state();
+
+webgl_bind({ vao: vao, array_buffer: vertecies_buffer }, () => {
+  kgl
+    .attribute_location("aPosition", "vec2")
+    .enable_attr_array() // ~> vao[aPosition].enable()
+    .set_attr_to_active_array_buffer(); // vao[aPosition].attribute.set($current.array_buffer)
 });
 
 const webgl_index = KrGlBuffer.create("ELEMENT_ARRAY_BUFFER").data(
@@ -89,10 +87,10 @@ requestAnimationFrame(function f(t) {
   gl.clearColor(0.72, 0.83, 0.93, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  transform._data[0] = Math.sin(t / 1000)
-  transform._data[5] = Math.sin(t / 1000)
-  transform._data[7] = Math.sin(t / 1000)
-  transform.update()
+  transform._data[0] = Math.sin(t / 1000);
+  transform._data[5] = Math.sin(t / 1000);
+  transform._data[7] = Math.sin(t / 1000);
+  transform.update();
 
   webgl_bind(
     { vao: vao, array_buffer: transform, element_array_buffer: webgl_index },
@@ -104,7 +102,8 @@ requestAnimationFrame(function f(t) {
         .set_attr_to_active_array_buffer({
           strip: FLOAT_SIZE * 6,
           offset: 0 * 0,
-        });
+        })
+        .vertex_attr_divisor();
 
       kgl
         .attribute_location("aColor", "vec3")
@@ -112,18 +111,9 @@ requestAnimationFrame(function f(t) {
         .set_attr_to_active_array_buffer({
           strip: FLOAT_SIZE * 6,
           offset: FLOAT_SIZE * 3,
-        });
-      gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0);
+        })
+        .vertex_attr_divisor();
 
-      const reuse_count = 1;
-      gl.vertexAttribDivisor(
-        kgl.attribute_location("aTranslate", "vec3").location,
-        reuse_count
-      );
-      gl.vertexAttribDivisor(
-        kgl.attribute_location("aColor", "vec3").location,
-        reuse_count
-      );
       gl.drawElementsInstanced(
         gl.TRIANGLES,
         15,

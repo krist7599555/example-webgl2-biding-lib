@@ -150,12 +150,12 @@ class KrGlLocationAttribute<
     };
     assert(this.location > -1);
   }
-  enable_attr_array() {
+  enable_attr_array(): this {
     this.flag.enable_vert_attr_arr = true;
     KrGl._gl.enableVertexAttribArray(this.location);
     return this;
   }
-  disable_attr_array() {
+  disable_attr_array(): this {
     this.flag.enable_vert_attr_arr = false;
     KrGl._gl.disableVertexAttribArray(this.location);
     return this;
@@ -166,7 +166,7 @@ class KrGlLocationAttribute<
     data: Parameters<WebGL2RenderingContext[T]> extends [number, ...infer Rest]
       ? Rest
       : never;
-  }) {
+  }): this {
     assert(
       !this.flag.enable_vert_attr_arr,
       "require enable_vert_attr_arr == false"
@@ -176,6 +176,7 @@ class KrGlLocationAttribute<
       this.location,
       ...param.data
     );
+    return this;
   }
   set_attr_to_active_array_buffer(
     opt: {
@@ -183,7 +184,7 @@ class KrGlLocationAttribute<
       offset?: number;
       normalized?: boolean;
     } = {}
-  ) {
+  ): this {
     assert(
       this.flag.enable_vert_attr_arr,
       "require enable_vert_attr_arr == true"
@@ -196,6 +197,12 @@ class KrGlLocationAttribute<
       opt.strip ?? 0,
       opt.offset ?? 0
     );
+    return this;
+  }
+  /* instance draw setup */
+  vertex_attr_divisor(divide = 1): this {
+    KrGl._gl.vertexAttribDivisor(this.location, divide)
+    return this;
   }
 }
 class KrGlLocationUniform<
