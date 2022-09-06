@@ -3,14 +3,14 @@ import { RecordOfVariableTypeFromShaderString } from "./type";
 
 // prettier-ignore
 const TYPECONVERT = {
-  "float": { glsl_type: "float", base_type: "FLOAT", element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: "1f"  },
-  "vec2":  { glsl_type: "vec2",  base_type: "FLOAT", element_size: 4, element_count: 2,  size_in_byte: 8,  gl_setter_abbr: "2f"  },
-  "vec3":  { glsl_type: "vec3",  base_type: "FLOAT", element_size: 4, element_count: 3,  size_in_byte: 12, gl_setter_abbr: "3f"  },
-  "vec4":  { glsl_type: "vec4",  base_type: "FLOAT", element_size: 4, element_count: 4,  size_in_byte: 16, gl_setter_abbr: "4f"  },
-  "int":   { glsl_type: "int",   base_type: "INT",   element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: null as never  },
-  "bool":  { glsl_type: "bool",  base_type: "BOOL",  element_size: 1, element_count: 1,  size_in_byte: 1,  gl_setter_abbr: null as never  },
-  "mat3":  { glsl_type: "mat3",  base_type: "FLOAT", element_size: 4, element_count: 9,  size_in_byte: 36, gl_setter_abbr: "3fv" },
-  "mat4":  { glsl_type: "mat4",  base_type: "FLOAT", element_size: 4, element_count: 16, size_in_byte: 64, gl_setter_abbr: "4fv" },
+  "float": { glsl_type: "float", base_type: "FLOAT", element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: "1f",  gl_setter_uniform: "uniform1f"  },
+  "vec2":  { glsl_type: "vec2",  base_type: "FLOAT", element_size: 4, element_count: 2,  size_in_byte: 8,  gl_setter_abbr: "2f",  gl_setter_uniform: "uniform2f"  },
+  "vec3":  { glsl_type: "vec3",  base_type: "FLOAT", element_size: 4, element_count: 3,  size_in_byte: 12, gl_setter_abbr: "3f",  gl_setter_uniform: "uniform3f"  },
+  "vec4":  { glsl_type: "vec4",  base_type: "FLOAT", element_size: 4, element_count: 4,  size_in_byte: 16, gl_setter_abbr: "4f",  gl_setter_uniform: "uniform4f"  },
+  "int":   { glsl_type: "int",   base_type: "INT",   element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: null as never, gl_setter_uniform: "uniform4f"  },
+  "bool":  { glsl_type: "bool",  base_type: "BOOL",  element_size: 1, element_count: 1,  size_in_byte: 1,  gl_setter_abbr: null as never, gl_setter_uniform: "uniform4f"  },
+  "mat3":  { glsl_type: "mat3",  base_type: "FLOAT", element_size: 4, element_count: 9,  size_in_byte: 36, gl_setter_abbr: "3fv", gl_setter_uniform: "uniformMatrix3fv" },
+  "mat4":  { glsl_type: "mat4",  base_type: "FLOAT", element_size: 4, element_count: 16, size_in_byte: 64, gl_setter_abbr: "4fv", gl_setter_uniform: "uniformMatrix4fv" },
 } as const;
 
 type KrGlslVarRecType = typeof TYPECONVERT;
@@ -62,6 +62,12 @@ export class KrGl<
     type: WebGlProgramVariable[T]
   ) {
     return new KrGlLocation(name, type, "attribute");
+  }
+  uniform_location<T extends keyof WebGlProgramVariable & string>(
+    name: T,
+    type: WebGlProgramVariable[T]
+  ) {
+    return new KrGlLocation(name, type, "uniform");
   }
 }
 
@@ -124,6 +130,7 @@ export class KrGlLocation<
   UA extends KrGlLocationUniformOrAttribute
 > {
   name: NAME;
+  type: TYPE;
   element_type: KrGlType<TYPE>;
   location: KrGlLocationNativeLocationType<UA>;
   location_type: UA;
@@ -133,6 +140,7 @@ export class KrGlLocation<
   };
   constructor(name: NAME, item_type: TYPE, location_type: UA) {
     this.name = name;
+    this.type = item_type;
     this.element_type = new KrGlType(item_type);
     this.location_type = location_type;
     this._internal = {
@@ -188,6 +196,12 @@ export class KrGlLocation<
     const field = `vertexAttrib${type}` as `vertexAttrib${ValueOf<KrGlslVarRecType>["gl_setter_abbr"]}`;
     // @ts-ignore
     KrGl._gl[field](this.location + (param.index ?? 0), ...param.data)
+  }
+  set_uniform_data<T extends KrGlslVarRecType[TYPE]["gl_setter_uniform"] = KrGlslVarRecType[TYPE]["gl_setter_uniform"]>(param: {
+    data: (Parameters<WebGL2RenderingContext[T]> extends [WebGLUniformLocation | null, ...infer Rest] ? Rest : never)
+  }) {
+    // @ts-ignore
+    KrGl._gl[TYPECONVERT[this.type].gl_setter_uniform](this.location as any, ...param.data)
   }
 
   /** set attribute to current active buffer */
