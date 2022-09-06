@@ -88,7 +88,12 @@ requestAnimationFrame(function f(t) {
 
   gl.clearColor(0.72, 0.83, 0.93, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  // gl.drawArrays(gl.TRIANGLES, 0, count);
+
+  acolor.set_attr_data_fallback({ data: [1, 0, 0] });
   gl.drawElements(gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0)
+
+  acolor.set_attr_data_fallback({ data: [1, 1, 0] });
+  gl.drawElements(gl.LINE_STRIP, 15, gl.UNSIGNED_BYTE, 0)
+  
   requestAnimationFrame(f);
 });
