@@ -1,18 +1,24 @@
+import { ValueOf } from "type-fest";
 import { RecordOfVariableTypeFromShaderString } from "./type";
 
 // prettier-ignore
 const TYPECONVERT = {
-  "float": { glsl_type: "float", base_type: "FLOAT", element_size: 4, element_count: 1  },
-  "vec2":  { glsl_type: "vec2",  base_type: "FLOAT", element_size: 4, element_count: 2  },
-  "vec3":  { glsl_type: "vec3",  base_type: "FLOAT", element_size: 4, element_count: 3  },
-  "int":   { glsl_type: "int",   base_type: "INT",   element_size: 4, element_count: 1  },
-  "bool":  { glsl_type: "bool",  base_type: "BOOL",  element_size: 1, element_count: 1  },
-  "mat3":  { glsl_type: "mat3",  base_type: "FLOAT", element_size: 4, element_count: 9  },
-  "mat4":  { glsl_type: "mat4",  base_type: "FLOAT", element_size: 4, element_count: 16 },
+  "float": { glsl_type: "float", base_type: "FLOAT", element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: "1f"  },
+  "vec2":  { glsl_type: "vec2",  base_type: "FLOAT", element_size: 4, element_count: 2,  size_in_byte: 8,  gl_setter_abbr: "2f"  },
+  "vec3":  { glsl_type: "vec3",  base_type: "FLOAT", element_size: 4, element_count: 3,  size_in_byte: 12, gl_setter_abbr: "3f"  },
+  "vec4":  { glsl_type: "vec4",  base_type: "FLOAT", element_size: 4, element_count: 4,  size_in_byte: 16, gl_setter_abbr: "4f"  },
+  "int":   { glsl_type: "int",   base_type: "INT",   element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: null as never  },
+  "bool":  { glsl_type: "bool",  base_type: "BOOL",  element_size: 1, element_count: 1,  size_in_byte: 1,  gl_setter_abbr: null as never  },
+  "mat3":  { glsl_type: "mat3",  base_type: "FLOAT", element_size: 4, element_count: 9,  size_in_byte: 36, gl_setter_abbr: "3fv" },
+  "mat4":  { glsl_type: "mat4",  base_type: "FLOAT", element_size: 4, element_count: 16, size_in_byte: 64, gl_setter_abbr: "4fv" },
 } as const;
+
+type KrGlslVarRecType = typeof TYPECONVERT;
 type KrGlslVarType = keyof typeof TYPECONVERT;
 
-export class KrGl<WebGlProgramVariable extends { [key: string]: KrGlslVarType }> {
+export class KrGl<
+  WebGlProgramVariable extends { [key: string]: KrGlslVarType }
+> {
   /**
    * global enum to reference GLenum
    * @see https://registry.khronos.org/OpenGL/api/GL/glext.h **/
@@ -70,6 +76,9 @@ class KrGlType<T extends KrGlslVarType> {
   get native_type_size(): typeof TYPECONVERT[T]["element_size"] {
     return TYPECONVERT[this.type].element_size;
   }
+  get size_in_byte(): typeof TYPECONVERT[T]["size_in_byte"] {
+    return TYPECONVERT[this.type].size_in_byte;
+  }
   get glenum(): WebGL2RenderingContext[typeof TYPECONVERT[T]["base_type"]] {
     return KrGl._gl[TYPECONVERT[this.type].base_type];
   }
@@ -83,6 +92,9 @@ type KrGlBufferString =
 export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> {
   webgl_buffer: WebGLBuffer;
   buffer_type: BUFFTYPE;
+  static create<BUFFTYPE extends KrGlBufferString>(buffer_type: BUFFTYPE) {
+    return new KrGlBuffer(buffer_type);
+  }
   constructor(buffer_type: BUFFTYPE) {
     this.buffer_type = buffer_type;
     this.webgl_buffer = KrGl._gl.createBuffer()!;
@@ -115,15 +127,22 @@ export class KrGlLocation<
   element_type: KrGlType<TYPE>;
   location: KrGlLocationNativeLocationType<UA>;
   location_type: UA;
+
+  _internal: {
+    enable_vert_attr_arr: boolean;
+  };
   constructor(name: NAME, item_type: TYPE, location_type: UA) {
     this.name = name;
     this.element_type = new KrGlType(item_type);
     this.location_type = location_type;
+    this._internal = {
+      enable_vert_attr_arr: false,
+    };
     if (location_type == "uniform") {
       this.location = KrGl._gl.getUniformLocation(KrGl._program, name)! as any;
     } else {
       this.location = KrGl._gl.getAttribLocation(KrGl._program, name)! as any;
-      KrGl._gl.enableVertexAttribArray(this.location as any); // auto enable
+      // KrGl._gl.enableVertexAttribArray(this.location as any); // auto enable
     }
     if (
       (typeof this.location != "number" && !this.location) ||
@@ -132,8 +151,9 @@ export class KrGlLocation<
       throw new Error(`gl location is not valid for ${this.name}`);
     }
   }
-  enable() {
+  enable_attr_array() {
     if (this.location_type == "attribute") {
+      this._internal.enable_vert_attr_arr = true;
       KrGl._gl.enableVertexAttribArray(
         this.location as KrGlLocationNativeLocationType<"attribute">
       );
@@ -142,13 +162,46 @@ export class KrGlLocation<
     }
     return this;
   }
-  set_attrib(
+
+  /** use direct manipulate `gl.vertexAttrib1f` */
+  disable_attr_array() {
+    if (this.location_type == "attribute") {
+      this._internal.enable_vert_attr_arr = false;
+      KrGl._gl.disableVertexAttribArray(
+        this.location as KrGlLocationNativeLocationType<"attribute">
+      );
+    } else {
+      throw new Error("uniform can not enable");
+    }
+    return this;
+  }
+
+  /** set attribute not recommend */
+  set_attr_data(type: KrGlslVarRecType[TYPE]["gl_setter_abbr"], param: {
+    index?: number,
+    data: (Parameters<WebGL2RenderingContext[`vertexAttrib${typeof type}`]> extends [number, ...infer Rest] ? Rest : never)
+  }) {
+    if (this._internal.enable_vert_attr_arr) {
+      throw new Error("enable_vertext_attributte_array must dissable")
+    }
+    if (typeof this.location != "number") throw new Error("must be attr location")
+    const field = `vertexAttrib${type}` as `vertexAttrib${ValueOf<KrGlslVarRecType>["gl_setter_abbr"]}`;
+    // @ts-ignore
+    KrGl._gl[field](this.location + (param.index ?? 0), ...param.data)
+  }
+
+  /** set attribute to current active buffer */
+  set_attr_array(
     opt: {
       strip?: number;
       offset?: number;
       normalized?: boolean;
     } = {}
   ) {
+    if (!this._internal.enable_vert_attr_arr)
+      throw new Error(
+        "must enableVertexAttribArray (loc.enable_vert_array()) to use buffer form"
+      );
     if (this.location_type == "attribute" && typeof this.location == "number") {
       KrGl._gl.vertexAttribPointer(
         this.location,
