@@ -39,6 +39,7 @@ export class KrGl<
     canvas?: HTMLCanvasElement;
     vertext_shader: VS;
     fragment_shader: FS;
+    opt?: WebGLContextAttributes;
   }): KrGl<RecordOfVariableTypeFromShaderString<VS | FS>> {
     return new KrGl(opt);
   }
@@ -47,9 +48,10 @@ export class KrGl<
     canvas?: HTMLCanvasElement;
     vertext_shader: string;
     fragment_shader: string;
+    opt?: WebGLContextAttributes;
   }) {
     this.canvas = opt.canvas ?? document.createElement("canvas");
-    const gl = this.canvas.getContext("webgl2")!;
+    const gl = this.canvas.getContext("webgl2", opt.opt ?? {})!;
     this.gl = gl;
     this.program = createProgram(
       gl,
@@ -79,6 +81,9 @@ export class KrGl<
   create_vao_state() {
     return new KrGlVAO();
   }
+  create_buffer<T extends KrGlBufferString>(type: T) {
+    return new KrGlBuffer(type);
+  }
 }
 
 interface KrGlBiding {
@@ -92,7 +97,9 @@ type KrGlBufferString =
   | "UNIFORM_BUFFER"
   | "ELEMENT_ARRAY_BUFFER";
 
-export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> implements KrGlBiding {
+export class KrGlBuffer<BUFFTYPE extends KrGlBufferString>
+  implements KrGlBiding
+{
   webgl_buffer: WebGLBuffer;
   buffer_type: BUFFTYPE;
   _data: TypedArray;
@@ -102,7 +109,7 @@ export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> implements KrGlBiding
   constructor(buffer_type: BUFFTYPE) {
     this.buffer_type = buffer_type;
     this.webgl_buffer = KrGl._gl.createBuffer()!;
-    this._data = new Float32Array([])
+    this._data = new Float32Array([]);
   }
   _unsafe_bind_enable(): this {
     KrGl._gl.bindBuffer(KrGl._gl[this.buffer_type], this.webgl_buffer);
@@ -113,15 +120,19 @@ export class KrGlBuffer<BUFFTYPE extends KrGlBufferString> implements KrGlBiding
     return this;
   }
   bind(fn: () => void): this {
-    this._unsafe_bind_enable()
+    this._unsafe_bind_enable();
     fn();
-    this._unsafe_bind_disable()
+    this._unsafe_bind_disable();
     return this;
   }
   data(inp: TypedArray) {
-    this._data = inp
+    this._data = inp;
     this.bind(() => {
-      KrGl._gl.bufferData(KrGl._gl[this.buffer_type], inp, KrGl._gl.STATIC_DRAW);
+      KrGl._gl.bufferData(
+        KrGl._gl[this.buffer_type],
+        inp,
+        KrGl._gl.STATIC_DRAW
+      );
     });
     return this;
   }
@@ -201,7 +212,7 @@ class KrGlLocationAttribute<
   }
   /* instance draw setup */
   vertex_attr_divisor(divide = 1): this {
-    KrGl._gl.vertexAttribDivisor(this.location, divide)
+    KrGl._gl.vertexAttribDivisor(this.location, divide);
     return this;
   }
 }
@@ -240,7 +251,7 @@ class KrGlVAO implements KrGlBiding {
     return new KrGlVAO();
   }
   constructor() {
-    this.vao = KrGl._gl.createVertexArray()!
+    this.vao = KrGl._gl.createVertexArray()!;
     assert(this.vao);
   }
   _unsafe_bind_enable() {
@@ -252,14 +263,12 @@ class KrGlVAO implements KrGlBiding {
     return this;
   }
   bind(fn: () => void) {
-    this._unsafe_bind_enable()
+    this._unsafe_bind_enable();
     fn();
-    this._unsafe_bind_disable()
+    this._unsafe_bind_disable();
     return this;
   }
-
 }
-
 
 function createShader(
   gl: WebGL2RenderingContext,
@@ -294,12 +303,15 @@ function createProgram(
   gl.deleteProgram(program);
 }
 
-export function webgl_bind(opt: {
-  vao?: KrGlVAO,
-  array_buffer?: KrGlBuffer<"ARRAY_BUFFER">
-  element_array_buffer?: KrGlBuffer<"ELEMENT_ARRAY_BUFFER">
-}, fn: () => void) {
-  values(opt).forEach(o => o._unsafe_bind_enable())
-  fn()
-  values(opt).forEach(o => o._unsafe_bind_disable())
+export function webgl_bind(
+  opt: {
+    vao?: KrGlVAO;
+    array_buffer?: KrGlBuffer<"ARRAY_BUFFER">;
+    element_array_buffer?: KrGlBuffer<"ELEMENT_ARRAY_BUFFER">;
+  },
+  fn: () => void
+) {
+  values(opt).forEach((o) => o._unsafe_bind_enable());
+  fn();
+  values(opt).forEach((o) => o._unsafe_bind_disable());
 }
