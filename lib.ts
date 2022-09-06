@@ -1,8 +1,14 @@
 import { ValueOf } from "type-fest";
 import { RecordOfVariableTypeFromShaderString } from "./type";
 
+function assert<T>(cond: T, message = "assert error"): asserts cond {
+  if (!cond) {
+    throw new Error(message);
+  }
+}
+
 // prettier-ignore
-const TYPECONVERT = {
+export const TYPECONVERT = {
   "float": { glsl_type: "float", base_type: "FLOAT", element_size: 4, element_count: 1,  size_in_byte: 4,  gl_setter_abbr: "1f",          gl_setter_uniform: "uniform1f",        gl_setter_attr: "vertexAttrib1f"  },
   "vec2":  { glsl_type: "vec2",  base_type: "FLOAT", element_size: 4, element_count: 2,  size_in_byte: 8,  gl_setter_abbr: "2f",          gl_setter_uniform: "uniform2f",        gl_setter_attr: "vertexAttrib2f"  },
   "vec3":  { glsl_type: "vec3",  base_type: "FLOAT", element_size: 4, element_count: 3,  size_in_byte: 12, gl_setter_abbr: "3f",          gl_setter_uniform: "uniform3f",        gl_setter_attr: "vertexAttrib3f"  },
@@ -61,13 +67,13 @@ export class KrGl<
     name: T,
     type: WebGlProgramVariable[T]
   ) {
-    return new KrGlLocation(name, type, "attribute");
+    return new KrGlLocationAttribute(name, type);
   }
   uniform_location<T extends keyof WebGlProgramVariable & string>(
     name: T,
     type: WebGlProgramVariable[T]
   ) {
-    return new KrGlLocation(name, type, "uniform");
+    return new KrGlLocationUniform(name, type);
   }
 }
 
@@ -124,110 +130,103 @@ type KrGlLocationNativeLocationType<T extends KrGlLocationUniformOrAttribute> =
     : T extends "attribute"
     ? Exclude<ReturnType<WebGL2RenderingContext["getAttribLocation"]>, null>
     : never;
-export class KrGlLocation<
-  NAME extends string,
-  TYPE extends KrGlslVarType,
-  UA extends KrGlLocationUniformOrAttribute
-> {
-  name: NAME;
-  type: TYPE;
-  element_type: KrGlType<TYPE>;
-  location: KrGlLocationNativeLocationType<UA>;
-  location_type: UA;
 
-  _internal: {
+class KrGlLocationBase<NAME extends string, TYPE extends KrGlslVarType> {
+  constructor(public readonly name: NAME, public readonly type: TYPE) {}
+}
+
+class KrGlLocationAttribute<
+  NAME extends string,
+  TYPE extends KrGlslVarType
+> extends KrGlLocationBase<NAME, TYPE> {
+  readonly location: number;
+  private flag: {
     enable_vert_attr_arr: boolean;
   };
-  constructor(name: NAME, item_type: TYPE, location_type: UA) {
-    this.name = name;
-    this.type = item_type;
-    this.element_type = new KrGlType(item_type);
-    this.location_type = location_type;
-    this._internal = {
+  constructor(name: NAME, item_type: TYPE) {
+    super(name, item_type);
+    this.location = KrGl._gl.getAttribLocation(KrGl._program, name)! as any;
+    this.flag = {
       enable_vert_attr_arr: false,
     };
-    if (location_type == "uniform") {
-      this.location = KrGl._gl.getUniformLocation(KrGl._program, name)! as any;
-    } else {
-      this.location = KrGl._gl.getAttribLocation(KrGl._program, name)! as any;
-      // KrGl._gl.enableVertexAttribArray(this.location as any); // auto enable
-    }
-    if (
-      (typeof this.location != "number" && !this.location) ||
-      (typeof this.location == "number" && this.location < 0)
-    ) {
-      throw new Error(`gl location is not valid for ${this.name}`);
-    }
+    assert(this.location > -1);
   }
   enable_attr_array() {
-    if (this.location_type == "attribute") {
-      this._internal.enable_vert_attr_arr = true;
-      KrGl._gl.enableVertexAttribArray(
-        this.location as KrGlLocationNativeLocationType<"attribute">
-      );
-    } else {
-      throw new Error("uniform can not enable");
-    }
+    this.flag.enable_vert_attr_arr = true;
+    KrGl._gl.enableVertexAttribArray(this.location);
     return this;
   }
-
-  /** use direct manipulate `gl.vertexAttrib1f` */
   disable_attr_array() {
-    if (this.location_type == "attribute") {
-      this._internal.enable_vert_attr_arr = false;
-      KrGl._gl.disableVertexAttribArray(
-        this.location as KrGlLocationNativeLocationType<"attribute">
-      );
-    } else {
-      throw new Error("uniform can not enable");
-    }
+    this.flag.enable_vert_attr_arr = false;
+    KrGl._gl.disable(this.location);
     return this;
   }
-
-  /** set attribute not recommend */
-  set_attr_data<T extends KrGlslVarRecType[TYPE]["gl_setter_attr"] = KrGlslVarRecType[TYPE]["gl_setter_attr"]>(param: {
-    data: (Parameters<WebGL2RenderingContext[T]> extends [number, ...infer Rest] ? Rest : never)
+  set_attr_data_fallback<
+    T extends KrGlslVarRecType[TYPE]["gl_setter_attr"] = KrGlslVarRecType[TYPE]["gl_setter_attr"]
+  >(param: {
+    data: Parameters<WebGL2RenderingContext[T]> extends [number, ...infer Rest]
+      ? Rest
+      : never;
   }) {
-    if (this._internal.enable_vert_attr_arr) {
-      throw new Error("enable_vertext_attributte_array must dissable")
-    }
-    if (typeof this.location != "number") throw new Error("must be attr location")
+    assert(
+      !this.flag.enable_vert_attr_arr,
+      "require enable_vert_attr_arr == false"
+    );
     // @ts-ignore
-    KrGl._gl[TYPECONVERT[this.type].gl_setter_attr](this.location, ...param.data)
+    KrGl._gl[TYPECONVERT[this.type].gl_setter_attr](
+      this.location,
+      ...param.data
+    );
   }
-  set_uniform_data<T extends KrGlslVarRecType[TYPE]["gl_setter_uniform"] = KrGlslVarRecType[TYPE]["gl_setter_uniform"]>(param: {
-    data: (Parameters<WebGL2RenderingContext[T]> extends [WebGLUniformLocation | null, ...infer Rest] ? Rest : never)
-  }) {
-    // @ts-ignore
-    KrGl._gl[TYPECONVERT[this.type].gl_setter_uniform](this.location as any, ...param.data)
-  }
-
-  /** set attribute to current active buffer */
-  set_attr_array(
+  set_attr_to_active_buffer(
     opt: {
       strip?: number;
       offset?: number;
       normalized?: boolean;
     } = {}
   ) {
-    if (!this._internal.enable_vert_attr_arr)
-      throw new Error(
-        "must enableVertexAttribArray (loc.enable_vert_array()) to use buffer form"
-      );
-    if (this.location_type == "attribute" && typeof this.location == "number") {
-      KrGl._gl.vertexAttribPointer(
-        this.location,
-        TYPECONVERT[this.type].element_count,
-        KrGl._gl[TYPECONVERT[this.type].base_type],
-        opt.normalized ?? false,
-        opt.strip ?? 0,
-        opt.offset ?? 0
-      );
-    } else {
-      throw new Error("uniform can not set atttribte pointer");
-    }
+    assert(
+      this.flag.enable_vert_attr_arr,
+      "require enable_vert_attr_arr == true"
+    );
+    KrGl._gl.vertexAttribPointer(
+      this.location,
+      TYPECONVERT[this.type].element_count,
+      KrGl._gl[TYPECONVERT[this.type].base_type],
+      opt.normalized ?? false,
+      opt.strip ?? 0,
+      opt.offset ?? 0
+    );
   }
 }
+class KrGlLocationUniform<
+  NAME extends string,
+  TYPE extends KrGlslVarType
+> extends KrGlLocationBase<NAME, TYPE> {
+  readonly location: WebGLUniformLocation;
+  constructor(name: NAME, item_type: TYPE) {
+    super(name, item_type);
+    this.location = KrGl._gl.getUniformLocation(KrGl._program, name)!;
+    assert(this.location);
+  }
+  set_uniform_data<
+    T extends KrGlslVarRecType[TYPE]["gl_setter_uniform"] = KrGlslVarRecType[TYPE]["gl_setter_uniform"]
+  >(param: {
+    data: Parameters<WebGL2RenderingContext[T]> extends [
+      WebGLUniformLocation | null,
+      ...infer Rest
+    ]
+      ? Rest
+      : never;
+  }) {
+    // @ts-ignore
+    KrGl._gl[TYPECONVERT[this.type].gl_setter_uniform](
+      this.location as any,
+      ...param.data
+    );
+  }
+}
+
 
 function createShader(
   gl: WebGL2RenderingContext,

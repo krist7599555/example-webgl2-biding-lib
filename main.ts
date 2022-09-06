@@ -1,5 +1,5 @@
 import { sum } from "lodash-es";
-import { KrGl, KrGlBuffer, KrGlLocation } from "./lib";
+import { KrGl, KrGlBuffer, TYPECONVERT } from "./lib";
 import { Matrix4 } from "@math.gl/core";
 
 // https://github.com/scriptfoundry/WebGL2-Videos-Materials/blob/main/03.Attributes1.js
@@ -37,8 +37,8 @@ const acolor = kgl.attribute_location("aColor", "vec3");
 const umvp = kgl.uniform_location("uMvp", "mat4");
 
 // set default value
-apos.disable_attr_array().set_attr_data({ data: [0, 0] });
-acolor.disable_attr_array().set_attr_data({ data: [1, 0, 1] });
+apos.disable_attr_array().set_attr_data_fallback({ data: [0, 0] });
+acolor.disable_attr_array().set_attr_data_fallback({ data: [1, 0, 1] });
 // set vertex array
 
 const count = 3;
@@ -55,15 +55,15 @@ KrGlBuffer.create("ARRAY_BUFFER")
   )
   .bind(() => {
     const sz = [
-      apos.element_type.size_in_byte,
-      acolor.element_type.size_in_byte,
+      TYPECONVERT[apos.type].size_in_byte,
+      TYPECONVERT[acolor.type].size_in_byte,
     ];
     apos
       .enable_attr_array()
-      .set_attr_array({ strip: sum(sz), offset: sum(sz.slice(0, 0)) });
+      .set_attr_to_active_buffer({ strip: sum(sz), offset: sum(sz.slice(0, 0)) });
     acolor
       .enable_attr_array()
-      .set_attr_array({ strip: sum(sz), offset: sum(sz.slice(0, 1)) });
+      .set_attr_to_active_buffer({ strip: sum(sz), offset: sum(sz.slice(0, 1)) });
   });
 
 requestAnimationFrame(function f(t) {
